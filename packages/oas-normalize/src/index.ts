@@ -120,6 +120,8 @@ export default class OASNormalize {
 
     return this.load()
       .then(schema => {
+        const shouldUsePath = this.type === 'path' && !isPostman(schema);
+
         // Though Postman collections don't support `$ref` pointers for us to bundle we'll still
         // upconvert it to an OpenAPI definition file so our returned dataset is always one of
         // those for a Postman dataset.
@@ -127,7 +129,7 @@ export default class OASNormalize {
           return OASNormalize.convertPostmanToOpenAPI(schema);
         }
 
-        return this.getSchemaForParsing(schema);
+        return shouldUsePath ? this.file : schema;
       })
       .then(schema => bundle(schema, parserOptions))
       .then(bundled => {
@@ -146,6 +148,8 @@ export default class OASNormalize {
 
     return this.load()
       .then(schema => {
+        const shouldUsePath = this.type === 'path' && !isPostman(schema);
+
         // Though Postman collections don't support `$ref` pointers for us to dereference we'll
         // still upconvert it to an OpenAPI definition file so our returned dataset is always one
         // of those for a Postman dataset.
@@ -153,7 +157,7 @@ export default class OASNormalize {
           return OASNormalize.convertPostmanToOpenAPI(schema);
         }
 
-        return this.getSchemaForParsing(schema);
+        return shouldUsePath ? this.file : schema;
       })
       .then(schema => dereference(schema, parserOptions))
       .then(dereferenced => {
@@ -241,12 +245,19 @@ export default class OASNormalize {
     parserOptions.validate.errors.colorize = this.opts.colorizeErrors;
 
     return this.load()
-      .then(async schema => {
+      .then(schema => {
+        const shouldUsePath = this.type === 'path' && !isPostman(schema);
+
         // Because we don't have something akin to `openapi-parser` for Postman collections we just
         // always convert them to OpenAPI.
-        return isPostman(schema) ? OASNormalize.convertPostmanToOpenAPI(schema) : schema;
+        return (isPostman(schema) ? OASNormalize.convertPostmanToOpenAPI(schema) : Promise.resolve(schema)).then(
+          normalizedSchema => ({
+            schema: normalizedSchema,
+            shouldUsePath,
+          }),
+        );
       })
-      .then(async schema => {
+      .then(async ({ schema, shouldUsePath }) => {
         if (!isSwagger(schema) && !isOpenAPI(schema)) {
           if (shouldThrowIfInvalid) {
             throw new ValidationError('The supplied API definition is unsupported.');
@@ -283,11 +294,8 @@ export default class OASNormalize {
          * tell us if the API definition is valid or not, we need to clone the schema before
          * supplying it to `openapi-parser`.
          */
-        const schemaForParsing = this.getSchemaForParsing(schema);
-        const result = await validate(
-          typeof schemaForParsing === 'string' ? schemaForParsing : structuredClone(schemaForParsing),
-          parserOptions,
-        );
+        const schemaForParsing = shouldUsePath ? this.file : structuredClone(schema);
+        const result = await validate(schemaForParsing, parserOptions);
         if (!result.valid && shouldThrowIfInvalid) {
           throw new ValidationError(compileErrors(result), {
             errors: result.errors,
@@ -348,13 +356,5 @@ export default class OASNormalize {
           throw new Error('Unknown file detected.');
       }
     });
-  }
-
-  private getSchemaForParsing(schema: Record<string, unknown>): Record<string, unknown> | string {
-    if (this.type === 'path' && !isPostman(schema)) {
-      return this.file;
-    }
-
-    return schema;
   }
 }
