@@ -10,7 +10,7 @@ import circular from '@readme/oas-examples/3.0/json/circular.json' with { type: 
 import petstore from '@readme/oas-examples/3.0/json/petstore.json' with { type: 'json' };
 import webhooks from '@readme/oas-examples/3.1/json/webhooks.json' with { type: 'json' };
 import nock from 'nock';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import OASNormalize from '../src/index.js';
 
@@ -178,23 +178,9 @@ describe('OASNormalize', () => {
   });
 
   describe('.bundle()', () => {
-    /**
-     * @note only tests that require `process.chdir()` should be in this block.
-     */
     describe('external schema', () => {
-      let originalCwd: string;
-
-      beforeEach(() => {
-        originalCwd = process.cwd();
-      });
-
-      afterEach(() => {
-        process.chdir(originalCwd);
-      });
-
       it('should bundle an external schema in', async () => {
         const contents = require.resolve('./__fixtures__/bundle/definition.json');
-        process.chdir(path.dirname(contents));
         const o = new OASNormalize(contents, { enablePaths: true });
         const bundled = (await o.bundle()) as OpenAPIV3.Document;
 
@@ -630,6 +616,20 @@ describe('OASNormalize', () => {
         });
 
         await expect(o.validate()).resolves.toStrictEqual({ valid: true, warnings: [], specification });
+      });
+    });
+
+    describe('external schema', () => {
+      it('should validate an external schema with relative refs from its source path', async () => {
+        const o = new OASNormalize(require.resolve('./__fixtures__/bundle/definition.json'), {
+          enablePaths: true,
+        });
+
+        await expect(o.validate()).resolves.toStrictEqual({
+          valid: true,
+          warnings: [],
+          specification: 'OpenAPI',
+        });
       });
     });
 

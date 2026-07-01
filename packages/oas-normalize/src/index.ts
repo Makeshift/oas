@@ -127,7 +127,7 @@ export default class OASNormalize {
           return OASNormalize.convertPostmanToOpenAPI(schema);
         }
 
-        return schema;
+        return this.getSchemaForParsing(schema);
       })
       .then(schema => bundle(schema, parserOptions))
       .then(bundled => {
@@ -153,7 +153,7 @@ export default class OASNormalize {
           return OASNormalize.convertPostmanToOpenAPI(schema);
         }
 
-        return schema;
+        return this.getSchemaForParsing(schema);
       })
       .then(schema => dereference(schema, parserOptions))
       .then(dereferenced => {
@@ -283,9 +283,11 @@ export default class OASNormalize {
          * tell us if the API definition is valid or not, we need to clone the schema before
          * supplying it to `openapi-parser`.
          */
-        const clonedSchema = structuredClone(schema);
-
-        const result = await validate(clonedSchema, parserOptions);
+        const schemaForParsing = this.getSchemaForParsing(schema);
+        const result = await validate(
+          typeof schemaForParsing === 'string' ? schemaForParsing : structuredClone(schemaForParsing),
+          parserOptions,
+        );
         if (!result.valid && shouldThrowIfInvalid) {
           throw new ValidationError(compileErrors(result), {
             errors: result.errors,
@@ -346,5 +348,13 @@ export default class OASNormalize {
           throw new Error('Unknown file detected.');
       }
     });
+  }
+
+  private getSchemaForParsing(schema: Record<string, unknown>): Record<string, unknown> | string {
+    if (this.type === 'path' && !isPostman(schema)) {
+      return this.file;
+    }
+
+    return schema;
   }
 }
